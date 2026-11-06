@@ -1,0 +1,29 @@
+services:
+  privatebin:
+    # Published by .github/workflows/release.yml for linux/amd64 and linux/arm64.
+    # Tags: latest, 0.1 (follows 0.1.x patch releases), 0.1.0 (exact).
+    image: ghcr.io/private-bin/privatebin:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # only reachable by the reverse proxy on the host
+    volumes:
+      # SQLite database (or paste files) and the delete-token salt. The container
+      # runs as uid 65532: on Linux create the directory first with
+      #   mkdir -p data && sudo chown 65532:65532 data
+      - ./data:/data
+      # Optional: uncomment after creating ./config.toml (see config.example.toml).
+      # Without it, defaults and the environment variables below apply.
+      # - ./config.toml:/etc/privatebin/config.toml:ro
+    environment:
+      PRIVATEBIN__STORAGE__BACKEND: sqlite          # or: filesystem
+      PRIVATEBIN__TRAFFIC__TRUSTED_PROXIES: "172.16.0.0/12,127.0.0.1/32"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "/privatebin", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 5s
+      retries: 3

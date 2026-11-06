@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.DS_Store
+target
+data
+*.db
+*.db-*
+web/node_modules
+web/dist
+config.toml
+web/.test-dist
+e2e
+docs
+*.md

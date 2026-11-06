@@ -1,0 +1,26 @@
+{
+  "body": {
+    "v": 2,
+    "adata": [
+      [
+        "JsoUvecxVwn2VfH+cEAI5A==",
+        "9EnmGBz378o=",
+        100000,
+        256,
+        128,
+        "aes",
+        "gcm",
+        "zlib"
+      ],
+      "plaintext",
+      0,
+      0
+    ],
+    "ct": "3VMARB4BOxmBoMYUOTue8evYEV9hEacr6uHnbIGAP5o2YcKb6qfCnR8PjnfwhALJRsMMFpqyqvkQMA9rWI0xIbY=",
+    "meta": {
+      "expire": "1week"
+    }
+  },
+  "key": "BX4ujUnbTLLKYwsLKS2VC7z4fWRqo1vMSzJhzNgDGHQY",
+  "plaintext": "{\"paste\":\"Hello from a PrivateBin v2 fixture!\"}"
+}

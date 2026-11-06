@@ -1,0 +1,45 @@
+[package]
+name = "privatebin-server"
+description = "PrivateBin server: a zero-knowledge pastebin compatible with the PrivateBin JSON API v2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "privatebin"
+path = "src/main.rs"
+
+[lib]
+name = "privatebin"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "tracing"] }
+base64 = "0.23"
+clap = { version = "4", features = ["derive", "env"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+hex = "0.4"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["http1", "server", "server-graceful", "service", "tokio"] }
+hmac = "0.13"
+ipnet = "2"
+rand = "0.10"
+rust-embed = { version = "8", features = ["mime-guess"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["sqlite-bundled", "runtime-tokio", "migrate", "macros"] }
+subtle = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "fs", "time", "sync"] }
+tower = { version = "0.5", features = ["limit", "util"] }
+tower-http = { version = "0.7", features = ["set-header", "timeout", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+figment = { version = "0.10", features = ["toml", "env", "test"] }

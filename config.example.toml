@@ -1,0 +1,73 @@
+# PrivateBin configuration.
+#
+# Loaded from /etc/privatebin/config.toml (or --config / PRIVATEBIN_CONFIG).
+# The file is optional: every key has a default, and any key can be overridden
+# with an environment variable PRIVATEBIN__<SECTION>__<KEY>, for example
+#   PRIVATEBIN__MAIN__SIZE_LIMIT=5242880
+#   PRIVATEBIN__STORAGE__BACKEND=filesystem
+#   PRIVATEBIN__TRAFFIC__TRUSTED_PROXIES="127.0.0.1/32,172.16.0.0/12"
+
+[server]
+# Address and port to listen on.
+bind = "0.0.0.0:8080"
+# HMAC key used to derive delete tokens. Leave unset to have a random key
+# generated on first start and persisted in `salt_file`. Changing it
+# invalidates every existing delete token.
+# salt = "some long random string"
+salt_file = "/data/salt"
+
+[main]
+# Name shown in the web interface.
+name = "PrivateBin"
+# Maximum size of the encrypted payload (the base64 `ct` field), in bytes.
+size_limit = 10485760
+# Allow pastes with an open discussion (encrypted comments).
+discussion = true
+# Maximum size of one encrypted comment, in bytes (comments are text only).
+comment_size_limit = 65536
+# Maximum number of comments per paste.
+max_comments = 500
+# Offer an optional password in the web interface.
+password = true
+# Allow (encrypted) file attachments in the web interface.
+file_upload = true
+# Whether "burn after reading" is pre-selected in the web interface.
+burn_after_reading_selected = false
+# plaintext | syntaxhighlighting | markdown
+default_formatter = "plaintext"
+
+[expire]
+# Must be one of the keys of `options`.
+default = "1week"
+
+# Lifetime in seconds per option; 0 means never. Options are presented ordered
+# by lifetime with "never" last. Setting this table replaces the whole list.
+[expire.options]
+5min = 300
+10min = 600
+1hour = 3600
+1day = 86400
+1week = 604800
+1month = 2592000
+1year = 31536000
+never = 0
+
+[traffic]
+# Minimum number of seconds between two posts (pastes or comments) from the
+# same IP address (IPv6: same /64). 0 disables the limit.
+limit = 10
+# X-Forwarded-For is only honored for requests whose TCP peer is in one of
+# these networks (your reverse proxy). The right-most untrusted address in
+# the header is used as the client address.
+trusted_proxies = ["127.0.0.1/32", "172.16.0.0/12"]
+
+[purge]
+# Seconds between two background purges of expired pastes. 0 disables it
+# (expired pastes are still never served).
+interval_secs = 300
+
+[storage]
+# sqlite | filesystem
+backend = "sqlite"
+sqlite_path = "/data/privatebin.db"
+filesystem_dir = "/data/pastes"

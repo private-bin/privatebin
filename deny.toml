@@ -1,0 +1,34 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+[graph]
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
+
+[advisories]
+# Unmaintained crates are reported but only fail CI when they are direct dependencies.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# No native TLS stack: TLS terminates at the reverse proxy and the image is a static musl binary.
+deny = [{ crate = "openssl-sys" }]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
