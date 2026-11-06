@@ -50,7 +50,7 @@ struct PublicExpireOption<'a> {
 pub fn public_config_json(config: &Config) -> String {
     let public = PublicConfig {
         name: &config.main.name,
-        version: env!("CARGO_PKG_VERSION"),
+        version: env!("PRIVATEBIN_VERSION"),
         size_limit: config.main.size_limit,
         discussion: config.main.discussion,
         password: config.main.password,

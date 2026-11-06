@@ -28,7 +28,10 @@ RUN cargo chef cook --release --locked --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY --from=web /src/web/dist ./web/dist
-RUN cargo build --release --locked --bin privatebin \
+# Version shown in the UI and `--version`; release builds pass the git tag.
+# Empty means the version in Cargo.toml.
+ARG VERSION=""
+RUN PRIVATEBIN_VERSION="$VERSION" cargo build --release --locked --bin privatebin \
  && cp target/release/privatebin /privatebin \
  && mkdir -p /data \
  && chown 65532:65532 /data

@@ -21,7 +21,7 @@ const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
 #[derive(Parser)]
-#[command(name = "privatebin", version, about = "Zero-knowledge pastebin server")]
+#[command(name = "privatebin", version = env!("PRIVATEBIN_VERSION"), about = "Zero-knowledge pastebin server")]
 struct Cli {
     /// Configuration file (default: /etc/privatebin/config.toml, if present).
     #[arg(long, short, global = true, env = "PRIVATEBIN_CONFIG")]
@@ -104,7 +104,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         size_limit = config.main.size_limit,
         rate_limit_secs = config.traffic.limit,
         "starting privatebin {}",
-        env!("CARGO_PKG_VERSION")
+        env!("PRIVATEBIN_VERSION")
     );
     let state = privatebin::build_state(config).await?;
     let purger = purge::spawn(state.clone());

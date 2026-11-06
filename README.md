@@ -220,7 +220,10 @@ PB_URL=http://127.0.0.1:8080/ npx playwright test   # PB_CHANNEL=chrome uses a s
 **Releases.** Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`. It
 builds the `linux/amd64` and `linux/arm64` images on native runners,
 publishes them to `ghcr.io/private-bin/privatebin` as one multi-arch image with
-SBOM and provenance, and creates a GitHub release.
+SBOM and provenance, and creates a GitHub release. The version shown in the
+footer and by `privatebin --version` is taken from the tag; other builds show
+the version in `Cargo.toml` (override with `--build-arg VERSION=…` or the
+`PRIVATEBIN_VERSION` environment variable at build time).
 
 ## License
 
