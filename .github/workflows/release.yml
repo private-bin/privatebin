@@ -77,7 +77,7 @@ jobs:
     steps:
       - name: Lowercase image name
         run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digest-*
