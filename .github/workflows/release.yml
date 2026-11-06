@@ -23,6 +23,7 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -71,6 +72,7 @@ jobs:
   publish:
     name: Publish manifest + release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build
     permissions:
       contents: write
