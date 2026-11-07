@@ -77,6 +77,8 @@ test('burn after reading can be opened exactly once', async ({ page, browser }) 
   await first.getByRole('button', { name: 'Open and delete' }).click();
   await expect(first.locator('.content__plain')).toHaveText('read me once');
   await expect(first.locator('.callout--warn')).toHaveCount(1);
+  await first.reload();
+  await expect(first.getByRole('heading', { name: 'This paste is gone' })).toBeVisible();
 
   const second = await (await browser.newContext()).newPage();
   await second.goto(url);

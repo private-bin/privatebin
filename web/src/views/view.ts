@@ -62,6 +62,9 @@ export async function showPaste(id: string): Promise<void> {
     } catch (err) {
       return showError('notfound', err instanceof ApiError ? undefined : 'The server could not be reached.');
     }
+    // The server has now deleted a burn-after-reading paste. Drop the `-` from the
+    // fragment so a reload reports it as gone instead of offering to open it again.
+    if (confirm) history.replaceState(history.state, '', `${location.pathname}${location.search}#${text}`);
     await unlock(paste, key, '');
   };
 
