@@ -111,7 +111,7 @@ jobs:
           PB_URL: http://127.0.0.1:8080/
           PB_CHANNEL: chrome
         run: npx playwright test --global-timeout=480000
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report

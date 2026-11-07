@@ -63,7 +63,7 @@ jobs:
         run: echo "SLUG=${PLATFORM//\//-}" >> "$GITHUB_ENV"
         env:
           PLATFORM: ${{ matrix.platform }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: digest-${{ env.SLUG }}
           path: /tmp/digests/*
