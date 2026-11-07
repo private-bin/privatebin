@@ -100,15 +100,16 @@ jobs:
       - name: Install E2E dependencies
         working-directory: e2e
         run: npm ci
-      - name: Install Chromium
-        working-directory: e2e
-        timeout-minutes: 10
-        run: npx playwright install --with-deps chromium
+      # Use the Google Chrome preinstalled on GitHub's Ubuntu runners: downloading
+      # Playwright's own Chromium (`playwright install --with-deps`) hangs on the runners.
+      - name: Check Chrome
+        run: google-chrome --version
       - name: Run Playwright
         working-directory: e2e
         timeout-minutes: 10
         env:
           PB_URL: http://127.0.0.1:8080/
+          PB_CHANNEL: chrome
         run: npx playwright test --global-timeout=480000
       - uses: actions/upload-artifact@v4
         if: failure()
