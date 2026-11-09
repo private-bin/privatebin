@@ -5,7 +5,13 @@ targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-un
 [advisories]
 # Unmaintained crates are reported but only fail CI when they are direct dependencies.
 unmaintained = "workspace"
-ignore = []
+ignore = [
+  # SQLite < 3.54 can return stale page-cache memory when it opens a database together
+  # with a crafted `-wal` file. The server only opens its own /data/privatebin.db, which
+  # nothing else can write, so this is not reachable. sqlx-sqlite 0.9.0 caps
+  # libsqlite3-sys at <0.38; remove this entry once sqlx allows >=0.39 (SQLite 3.54).
+  { id = "RUSTSEC-2026-0459", reason = "only our own database files are opened; blocked on sqlx" },
+]
 
 [licenses]
 confidence-threshold = 0.9
