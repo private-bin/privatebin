@@ -2,7 +2,7 @@
 import { ApiError, baseUrl, createPaste } from '../api';
 import { base58Encode } from '../base58';
 import { config, expireLabel } from '../config';
-import { encryptPaste, randomBytes } from '../crypto';
+import { encryptPaste, generatePassword, randomBytes } from '../crypto';
 import { clear, h } from '../dom';
 import { formatBytes, formatMiB } from '../format';
 import { icon } from '../icons';
@@ -145,7 +145,36 @@ export function showCreate(init: CreateInit = {}): void {
     { id: 'expire', class: 'select' },
     config.expireOptions.map((o) => h('option', { value: o.value, selected: o.value === config.expireDefault }, o.label)),
   );
-  const password = h('input', { id: 'password', type: 'password', class: 'input', placeholder: 'Optional', autocomplete: 'new-password' });
+  const password = h('input', {
+    id: 'password',
+    type: 'password',
+    class: 'input input--secret',
+    placeholder: 'Optional',
+    autocomplete: 'new-password',
+    autocapitalize: 'off',
+    spellcheck: 'false',
+  });
+  const reveal = h('button', { type: 'button', class: 'input-group__btn', 'aria-pressed': 'false' });
+  const generate = h(
+    'button',
+    { type: 'button', class: 'input-group__btn', 'aria-label': 'Generate a random password', title: 'Generate a random password' },
+    icon('refresh', 18),
+  );
+  function setRevealed(on: boolean): void {
+    password.type = on ? 'text' : 'password';
+    const label = on ? 'Hide password' : 'Show password';
+    reveal.setAttribute('aria-pressed', String(on));
+    reveal.setAttribute('aria-label', label);
+    reveal.title = label;
+    reveal.replaceChildren(icon(on ? 'eyeOff' : 'eye', 18));
+  }
+  setRevealed(false);
+  reveal.addEventListener('click', () => setRevealed(password.type === 'password'));
+  generate.addEventListener('click', () => {
+    password.value = generatePassword();
+    setRevealed(true);
+    password.focus();
+  });
 
   const burnSwitch = switchButton('burn-label', state.burn);
   const discussionSwitch = switchButton('disc-label', false);
@@ -235,7 +264,7 @@ export function showCreate(init: CreateInit = {}): void {
         formatter: state.formatter,
         burn,
         discussion,
-        hasPassword: password.value.length > 0,
+        password: password.value,
       });
     } catch (err) {
       state.busy = false;
@@ -310,7 +339,14 @@ export function showCreate(init: CreateInit = {}): void {
     'section',
     { class: 'options', 'aria-label': 'Options' },
     h('div', { class: 'option' }, h('label', { for: 'expire', class: 'label' }, 'Expires'), expire),
-    config.password ? h('div', { class: 'option' }, h('label', { for: 'password', class: 'label' }, 'Password'), password) : null,
+    config.password
+      ? h(
+          'div',
+          { class: 'option' },
+          h('label', { for: 'password', class: 'label' }, 'Password'),
+          h('div', { class: 'input-group' }, password, h('div', { class: 'input-group__actions' }, reveal, generate)),
+        )
+      : null,
     h(
       'div',
       { class: 'option option--toggle' },

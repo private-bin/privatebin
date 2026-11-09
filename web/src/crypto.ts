@@ -30,6 +30,24 @@ export function randomBytes(length: number): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(length));
 }
 
+/** Characters for generated passwords: no look-alikes such as 0/O or 1/l/I. */
+export const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+export const PASSWORD_LENGTH = 12;
+
+/** A uniformly random password: 12 characters from 55 give about 69 bits. */
+export function generatePassword(length = PASSWORD_LENGTH): string {
+  const n = PASSWORD_ALPHABET.length;
+  const limit = 256 - (256 % n); // bytes at or above this would bias the modulo
+  let out = '';
+  while (out.length < length) {
+    for (const b of randomBytes(length * 2)) {
+      if (out.length === length) break;
+      if (b < limit) out += PASSWORD_ALPHABET[b % n];
+    }
+  }
+  return out;
+}
+
 export function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;

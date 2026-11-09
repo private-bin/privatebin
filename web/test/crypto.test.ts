@@ -91,3 +91,16 @@ test('caps the decompressed size', async () => {
   const message = await decrypt<{ paste: string }>(key, '', ct, adata);
   assert.equal(message.paste.length, 2_000_000);
 });
+
+test('generated passwords are 12 unambiguous characters', async () => {
+  const { PASSWORD_ALPHABET, generatePassword } = await import('../src/crypto');
+  const seen = new Set<string>();
+  for (let i = 0; i < 500; i++) {
+    const pw = generatePassword();
+    assert.equal(pw.length, 12);
+    for (const c of pw) assert.ok(PASSWORD_ALPHABET.includes(c), c);
+    seen.add(pw);
+  }
+  assert.equal(seen.size, 500);
+  assert.ok(!/[0O1lI]/.test(PASSWORD_ALPHABET));
+});

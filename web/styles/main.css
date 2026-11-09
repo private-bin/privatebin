@@ -222,6 +222,18 @@ button:disabled { cursor: not-allowed; }
 .textarea { height: auto; padding: 10px 12px; resize: vertical; }
 .input--lg { height: 44px; border-radius: 10px; font-size: 15px; }
 .input[aria-invalid="true"] { border: 1.5px solid var(--danger); }
+.input-group { position: relative; }
+.input-group .input { padding-right: 80px; }
+.input-group__actions { position: absolute; top: 3px; right: 3px; display: flex; gap: 2px; }
+.input-group__btn {
+  width: 36px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--muted);
+}
+.input-group__btn:hover { background: var(--surface-2); color: var(--fg); }
+.input-group__btn[aria-pressed="true"] { color: var(--accent-text); }
+.input--secret[type="text"] { font-family: var(--font-mono); letter-spacing: 0.02em; }
+.secret-card__body { flex: 1 1 240px; min-width: 0; }
+.secret-value { font-family: var(--font-mono); font-size: 15px; font-weight: 500; color: var(--accent-text); overflow-wrap: anywhere; }
 .field-error { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--danger); }
 
 .segmented { display: flex; gap: 4px; padding: 3px; background: var(--surface-2); border-radius: 10px; }

@@ -66,6 +66,31 @@ test('password gate rejects a wrong password and accepts the right one', async (
   await expect(reader.locator('.content__plain')).toHaveText('top secret');
 });
 
+test('a generated password is shown once and opens the paste', async ({ page, browser }) => {
+  await page.goto('/');
+  await page.fill('#paste-text', 'generated secret');
+  const field = page.locator('#password');
+  await expect(field).toHaveAttribute('type', 'password');
+  await page.getByRole('button', { name: 'Generate a random password' }).click();
+  await expect(field).toHaveAttribute('type', 'text');
+  const generated = await field.inputValue();
+  expect(generated).toMatch(/^[A-HJ-NP-Za-km-z2-9]{12}$/);
+  await page.getByRole('button', { name: 'Hide password' }).click();
+  await expect(field).toHaveAttribute('type', 'password');
+
+  await page.getByRole('button', { name: /Encrypt & create link/ }).click();
+  await expect(page.getByRole('heading', { name: 'Your link is ready' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.secret-value')).toHaveText(generated);
+  const url = (await page.locator('.share-url').innerText()).replace(/\s/g, '');
+  expect(url).not.toContain(generated);
+
+  const reader = await (await browser.newContext()).newPage();
+  await reader.goto(url);
+  await reader.fill('#pw', generated);
+  await reader.getByRole('button', { name: 'Decrypt' }).click();
+  await expect(reader.locator('.content__plain')).toHaveText('generated secret');
+});
+
 test('burn after reading can be opened exactly once', async ({ page, browser }) => {
   const url = await createPaste(page, { text: 'read me once', burn: true });
   expect(url).toContain('#-');

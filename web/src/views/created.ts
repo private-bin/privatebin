@@ -17,7 +17,8 @@ export interface CreatedInfo {
   formatter: string;
   burn: boolean;
   discussion: boolean;
-  hasPassword: boolean;
+  /** Shown once so it can be shared; it never leaves this page. */
+  password: string;
 }
 
 function splitUrl(info: CreatedInfo): HTMLElement {
@@ -90,6 +91,24 @@ export function showCreated(info: CreatedInfo): void {
     }
   });
 
+  let passwordCard: HTMLElement | null = null;
+  if (info.password) {
+    const copyPassword = h('button', { type: 'button', class: 'btn' }, icon('copy', 16, 2), 'Copy');
+    copyPassword.addEventListener('click', async () => toast((await copyText(info.password)) ? 'Password copied' : 'Copy failed'));
+    passwordCard = h(
+      'section',
+      { class: 'card card--pad row row--between', 'aria-label': 'Password' },
+      h(
+        'div',
+        { class: 'stack-xs secret-card__body' },
+        h('strong', null, 'Password'),
+        h('span', { class: 'secret-value' }, info.password),
+        h('span', { class: 'small muted' }, 'Send it through a different channel than the link. It is not stored anywhere.'),
+      ),
+      copyPassword,
+    );
+  }
+
   const detail = (term: string, value: string) => [h('dt', null, term), h('dd', null, value)];
 
   mountPage([
@@ -116,6 +135,7 @@ export function showCreated(info: CreatedInfo): void {
       ),
       h('div', { class: 'row' }, copy, qrToggle, info.burn ? null : open),
     ),
+    passwordCard,
     h(
       'div',
       { class: 'callout callout--warn' },
@@ -137,7 +157,7 @@ export function showCreated(info: CreatedInfo): void {
           detail('Format', formatterLabel(info.formatter)),
           detail('Burn after reading', info.burn ? 'On' : 'Off'),
           detail('Discussion', info.discussion ? 'Open' : 'Closed'),
-          detail('Password', info.hasPassword ? 'Yes' : 'None'),
+          detail('Password', info.password ? 'Yes' : 'None'),
         ),
       ),
     ),
