@@ -36,7 +36,12 @@ function keyFromHash(): { text: string; confirm: boolean } {
   return { text, confirm };
 }
 
+/** A 32-byte key is 43–44 base58 characters. Clients that drop leading zero bytes can make it
+ *  a little shorter (one byte in 256 keys), but anything under 40 characters was cut off. */
+const MIN_KEY_CHARS = 40;
+
 function parseKey(text: string): Uint8Array | null {
+  if (text.length < MIN_KEY_CHARS) return null;
   try {
     const bytes = base58Decode(text);
     if (bytes.length === 0 || bytes.length > 32) return null;

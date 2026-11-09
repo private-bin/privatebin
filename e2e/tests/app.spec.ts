@@ -270,3 +270,23 @@ test('format buttons and tabs work with the arrow keys', async ({ page }) => {
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');
 });
+
+test('a cut-off key is rejected before the paste is fetched; a wrong key asks for a password', async ({ page, browser }) => {
+  const url = await createPaste(page, { text: 'keyed', burn: true });
+  const [base, key] = url.split('#-');
+  const reader = await (await browser.newContext()).newPage();
+  let fetched = false;
+  reader.on('request', (r) => {
+    if (r.resourceType() === 'fetch') fetched = true;
+  });
+  await reader.goto(`${base}#-${key.slice(0, 20)}`);
+  await expect(reader.getByRole('heading', { name: 'Could not decrypt this paste' })).toBeVisible();
+  expect(fetched).toBe(false); // the burn paste is still there
+
+  // Same length, different key: indistinguishable from a password-protected paste.
+  const wrong = key.slice(0, 10) + (key[10] === 'z' ? 'y' : 'z') + key.slice(11);
+  await reader.goto(`${base}#-${wrong}`);
+  await reader.getByRole('button', { name: 'Open and delete' }).click();
+  await expect(reader.getByRole('heading', { name: 'Enter the password' })).toBeVisible();
+  await expect(reader.getByText('the link you opened is probably incomplete or altered')).toBeVisible();
+});

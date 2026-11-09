@@ -38,8 +38,14 @@ export function showPasswordGate(options: PasswordGateOptions, onSubmit: (passwo
     h(
       'div',
       { class: 'stack-sm' },
-      h('h1', { class: 'gate__title' }, 'This paste is password-protected'),
+      h('h1', { class: 'gate__title' }, 'Enter the password'),
       h('p', { class: 'gate__text' }, 'Enter the password the sender gave you. It is checked on this device; it is never sent anywhere.'),
+      // A wrong key and a missing password fail the same way, so both causes are named.
+      h(
+        'p',
+        { class: 'gate__text' },
+        'If the sender did not give you a password, the link you opened is probably incomplete or altered: ask them for the full link, including everything after #.',
+      ),
     ),
     burned
       ? h(
