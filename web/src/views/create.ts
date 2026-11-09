@@ -13,6 +13,26 @@ import { mountPage } from './layout';
 export interface CreateInit {
   text?: string;
   formatter?: string;
+  /** Shown above the editor, e.g. what a clone did not carry over. */
+  notice?: string;
+}
+
+/** Arrow-key navigation for a group of tabs or radio buttons: one Tab stop, selection follows focus. */
+function rovingGroup(buttons: HTMLButtonElement[], isSelected: (i: number) => boolean, select: (i: number) => void): () => void {
+  const paint = () => buttons.forEach((b, i) => (b.tabIndex = isSelected(i) ? 0 : -1));
+  buttons.forEach((b, i) =>
+    b.addEventListener('keydown', (e) => {
+      const last = buttons.length - 1;
+      const next = { ArrowRight: i === last ? 0 : i + 1, ArrowDown: i === last ? 0 : i + 1, ArrowLeft: i === 0 ? last : i - 1, ArrowUp: i === 0 ? last : i - 1, Home: 0, End: last }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      select(next);
+      paint();
+      buttons[next].focus();
+    }),
+  );
+  paint();
+  return paint;
 }
 
 const FORMATS: { value: string; label: string }[] = [
@@ -41,7 +61,6 @@ function switchButton(labelId: string, checked: boolean): HTMLButtonElement {
 }
 
 export function showCreate(init: CreateInit = {}): void {
-  document.title = config.name;
   const state = {
     tab: 'write' as 'write' | 'preview',
     formatter: FORMATS.some((f) => f.value === init.formatter) ? init.formatter! : config.defaultFormatter,
@@ -60,23 +79,37 @@ export function showCreate(init: CreateInit = {}): void {
     autocomplete: 'off',
   });
   textarea.value = init.text ?? '';
-  const preview = h('div', { class: 'editor__preview', hidden: true });
+  const preview = h('div', { id: 'paste-preview', class: 'editor__preview', role: 'tabpanel', 'aria-labelledby': 'tab-preview', tabindex: '0', hidden: true });
 
-  const tabButtons = (['write', 'preview'] as const).map((tab) => {
-    const b = h('button', { type: 'button', role: 'tab', 'aria-selected': String(state.tab === tab) }, tab === 'write' ? 'Write' : 'Preview');
-    b.addEventListener('click', () => setTab(tab));
-    return b;
-  });
-
-  const formatButtons = FORMATS.map((f) => {
-    const b = h('button', { type: 'button', role: 'radio', 'aria-checked': String(state.formatter === f.value) }, f.label);
+  const TABS = ['write', 'preview'] as const;
+  const tabButtons = TABS.map((tab) => {
+    const b = h(
+      'button',
+      { type: 'button', role: 'tab', id: `tab-${tab}`, 'aria-controls': tab === 'write' ? 'paste-text' : 'paste-preview', 'aria-selected': String(state.tab === tab) },
+      tab === 'write' ? 'Write' : 'Preview',
+    );
     b.addEventListener('click', () => {
-      state.formatter = f.value;
-      formatButtons.forEach((other, i) => other.setAttribute('aria-checked', String(FORMATS[i].value === f.value)));
-      if (state.tab === 'preview') void renderPreview();
+      setTab(tab);
+      paintTabs();
     });
     return b;
   });
+  const paintTabs = rovingGroup(tabButtons, (i) => TABS[i] === state.tab, (i) => setTab(TABS[i], false));
+
+  function setFormatter(value: string): void {
+    state.formatter = value;
+    formatButtons.forEach((other, i) => other.setAttribute('aria-checked', String(FORMATS[i].value === value)));
+    if (state.tab === 'preview') void renderPreview();
+  }
+  const formatButtons = FORMATS.map((f) => {
+    const b = h('button', { type: 'button', role: 'radio', 'aria-checked': String(state.formatter === f.value) }, f.label);
+    b.addEventListener('click', () => {
+      setFormatter(f.value);
+      paintFormats();
+    });
+    return b;
+  });
+  const paintFormats = rovingGroup(formatButtons, (i) => FORMATS[i].value === state.formatter, (i) => setFormatter(FORMATS[i].value));
 
   async function renderPreview(): Promise<void> {
     clear(preview);
@@ -88,13 +121,13 @@ export function showCreate(init: CreateInit = {}): void {
     preview.appendChild(await renderContent(text, state.formatter));
   }
 
-  function setTab(tab: 'write' | 'preview'): void {
+  function setTab(tab: 'write' | 'preview', focusEditor = true): void {
     state.tab = tab;
-    tabButtons.forEach((b, i) => b.setAttribute('aria-selected', String((i === 0 ? 'write' : 'preview') === tab)));
+    tabButtons.forEach((b, i) => b.setAttribute('aria-selected', String(TABS[i] === tab)));
     textarea.hidden = tab !== 'write';
     preview.hidden = tab !== 'preview';
     if (tab === 'preview') void renderPreview();
-    else textarea.focus();
+    else if (focusEditor) textarea.focus();
   }
 
   // ---- Attachment ----
@@ -328,12 +361,6 @@ export function showCreate(init: CreateInit = {}): void {
     paintDropzone();
   }
 
-  textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      void send();
-    }
-  });
 
   const options = h(
     'section',
@@ -357,6 +384,18 @@ export function showCreate(init: CreateInit = {}): void {
   );
   paintSwitches();
 
+  // Ctrl/⌘ + Enter creates the paste from anywhere in the form, not only the editor.
+  const onShortcut = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void send();
+    }
+  };
+  editor.addEventListener('keydown', onShortcut);
+  options.addEventListener('keydown', onShortcut);
+
+  const notice = init.notice ? h('div', { class: 'callout callout--info', role: 'status' }, icon('info', 20), h('p', null, init.notice)) : null;
+
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
   mountPage([
     h(
@@ -365,6 +404,7 @@ export function showCreate(init: CreateInit = {}): void {
       h('h1', { class: 'page-title' }, 'New paste'),
       h('p', { class: 'page-lede' }, 'Encrypted in your browser before it is sent. The key never reaches the server.'),
     ),
+    notice,
     editor,
     options,
     errorBox,

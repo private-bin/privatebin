@@ -28,12 +28,17 @@ test('code paste with QR code, highlighting and nested comments', async ({ page,
   await expect(other.locator('.code__line')).toHaveCount(4);
 });
 
-test('theme toggle persists dark mode', async ({ page }) => {
+test('theme toggle cycles system, light and dark, and persists', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
-  await page.getByRole('button', { name: /Switch to dark mode/ }).click();
+  await page.getByRole('button', { name: /Theme: system.*Switch to light/ }).click();
+  await page.getByRole('button', { name: /Theme: light.*Switch to dark/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: /Theme: dark.*Switch to system/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  expect(await page.evaluate(() => localStorage.getItem('pb-theme'))).toBeNull();
 });
 
 test('markdown is sanitized and image attachments are previewed', async ({ page }) => {
@@ -192,10 +197,10 @@ test('delete links ask for confirmation first', async ({ page, browser }) => {
 test('theme toggle follows system theme changes', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Theme: system \(light\)/ })).toBeVisible();
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Theme: system \(dark\)/ })).toBeVisible();
 });
 
 test('footer links to the source repository', async ({ page }) => {
@@ -203,4 +208,65 @@ test('footer links to the source repository', async ({ page }) => {
   const link = page.getByRole('contentinfo').getByRole('link', { name: 'Source on GitHub' });
   await expect(link).toHaveAttribute('href', 'https://github.com/private-bin/privatebin');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+});
+
+test('a reader who cannot reach the server is told so, and can retry', async ({ page, browser }) => {
+  const url = await createPaste(page, { text: 'still here' });
+  const reader = await (await browser.newContext()).newPage();
+  // Fail only the API call, not the page itself.
+  await reader.route(/\?[0-9a-f]{16}$/, (route) => (route.request().resourceType() === 'fetch' ? route.abort('internetdisconnected') : route.continue()));
+  await reader.goto(url);
+  await expect(reader.getByRole('heading', { name: 'Can’t reach the server' })).toBeVisible();
+  await reader.unroute(/\?[0-9a-f]{16}$/);
+  await reader.getByRole('button', { name: 'Try again' }).click();
+  await expect(reader.locator('.content__plain')).toHaveText('still here');
+});
+
+test('burn + password warns that the paste is already deleted', async ({ page, browser }) => {
+  const url = await createPaste(page, { text: 'once, with a password', burn: true, password: 'pw' });
+  const reader = await (await browser.newContext()).newPage();
+  await reader.goto(url);
+  await reader.getByRole('button', { name: 'Open and delete' }).click();
+  await expect(reader.getByText('Already deleted from the server.')).toBeVisible();
+  await reader.fill('#pw', 'pw');
+  await reader.getByRole('button', { name: 'Decrypt' }).click();
+  await expect(reader.locator('.content__plain')).toHaveText('once, with a password');
+});
+
+test('a link with a mangled paste ID says it is incomplete', async ({ page }) => {
+  await page.goto('/?2e77dab4e98#7kvp7HgdNCAjKd8CbwabRAPhX8yCKkohq2rBLghcnC7N');
+  await expect(page.getByRole('heading', { name: 'This link looks incomplete' })).toBeVisible();
+  await page.goto('/?pasteid=xyz&deletetoken=abc');
+  await expect(page.getByRole('heading', { name: 'This link looks incomplete' })).toBeVisible();
+});
+
+test('the nickname is kept between comments and the new comment gets focus', async ({ page }) => {
+  await createPaste(page, { text: 'talk', discussion: true });
+  await page.getByRole('button', { name: 'Open paste' }).click();
+  await page.fill('#nick', 'mai');
+  await page.fill('#comment', 'first');
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('.comment__text', { hasText: 'first' })).toBeVisible();
+  await expect(page.locator('#nick')).toHaveValue('mai');
+  await expect(page.locator('.comment', { hasText: 'first' })).toBeFocused();
+});
+
+test('delete now disarms itself, and burn details mention the expiry', async ({ page }) => {
+  await createPaste(page, { text: 'x', burn: true });
+  await expect(page.locator('.details')).toContainText('After first read, or in 1 week if never opened');
+  await page.getByRole('button', { name: 'Delete now' }).click();
+  await expect(page.getByRole('button', { name: 'Click again to delete' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Delete now' })).toBeVisible();
+});
+
+test('format buttons and tabs work with the arrow keys', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('radio', { name: 'Plain text' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('radio', { name: 'Code' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Code' })).toBeFocused();
+  await page.getByRole('tab', { name: 'Write' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true');
 });

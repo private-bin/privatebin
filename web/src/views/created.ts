@@ -1,6 +1,6 @@
 // "Link ready" screen shown after a paste was uploaded.
 import { ApiError, deletePaste } from '../api';
-import { copyText, h, toast } from '../dom';
+import { announce, copyText, flashButton, h, toast } from '../dom';
 import { formatterLabel } from '../format';
 import { icon } from '../icons';
 import { renderQr } from '../render';
@@ -37,12 +37,10 @@ function splitUrl(info: CreatedInfo): HTMLElement {
 }
 
 export function showCreated(info: CreatedInfo): void {
-  document.title = 'Link ready';
-
   const copy = h('button', { type: 'button', class: 'btn btn--primary btn--lg' }, icon('copy', 18, 2), 'Copy link');
   copy.addEventListener('click', async () => {
     const ok = await copyText(info.shareUrl);
-    copy.replaceChildren(icon(ok ? 'check' : 'copy', 18, 2), ok ? 'Copied' : 'Copy failed');
+    flashButton(copy, [icon(ok ? 'check' : 'copy', 18, 2), ok ? 'Copied' : 'Copy failed'], ok ? 'Link copied' : 'Copy failed');
   });
 
   const qrSlot = h('div', { class: 'qr' });
@@ -70,16 +68,35 @@ export function showCreated(info: CreatedInfo): void {
   open.addEventListener('click', () => void showPaste(info.id));
 
   const copyDelete = h('button', { type: 'button', class: 'btn' }, 'Copy');
-  copyDelete.addEventListener('click', async () => toast((await copyText(info.deleteUrl)) ? 'Delete link copied' : 'Copy failed'));
+  copyDelete.addEventListener('click', async () => {
+    const ok = await copyText(info.deleteUrl);
+    flashButton(copyDelete, [ok ? 'Copied' : 'Copy failed'], ok ? 'Delete link copied' : 'Copy failed');
+  });
 
-  let armed = false;
+  // Two-step delete: the first click arms the button for a few seconds.
+  let armTimer: number | undefined;
   const deleteNow = h('button', { type: 'button', class: 'btn btn--danger' }, 'Delete now');
+  const disarm = () => {
+    window.clearTimeout(armTimer);
+    armTimer = undefined;
+    deleteNow.textContent = 'Delete now';
+    deleteNow.classList.remove('btn--armed');
+  };
+  deleteNow.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && armTimer !== undefined) disarm();
+  });
+  deleteNow.addEventListener('blur', () => {
+    if (armTimer !== undefined) disarm();
+  });
   deleteNow.addEventListener('click', async () => {
-    if (!armed) {
-      armed = true;
+    if (armTimer === undefined) {
       deleteNow.textContent = 'Click again to delete';
+      deleteNow.classList.add('btn--armed');
+      announce('Click again to delete the paste.');
+      armTimer = window.setTimeout(disarm, 4000);
       return;
     }
+    window.clearTimeout(armTimer);
     deleteNow.setAttribute('aria-busy', 'true');
     try {
       await deletePaste(info.id, info.deleteToken);
@@ -87,6 +104,7 @@ export function showCreated(info: CreatedInfo): void {
       showError('deleted');
     } catch (err) {
       deleteNow.removeAttribute('aria-busy');
+      disarm();
       toast(err instanceof ApiError ? err.message : 'Could not delete the paste.');
     }
   });
@@ -94,13 +112,16 @@ export function showCreated(info: CreatedInfo): void {
   let passwordCard: HTMLElement | null = null;
   if (info.password) {
     const copyPassword = h('button', { type: 'button', class: 'btn' }, icon('copy', 16, 2), 'Copy');
-    copyPassword.addEventListener('click', async () => toast((await copyText(info.password)) ? 'Password copied' : 'Copy failed'));
+    copyPassword.addEventListener('click', async () => {
+      const ok = await copyText(info.password);
+      flashButton(copyPassword, [icon(ok ? 'check' : 'copy', 16, 2), ok ? 'Copied' : 'Copy failed'], ok ? 'Password copied' : 'Copy failed');
+    });
     passwordCard = h(
       'section',
       { class: 'card card--pad row row--between', 'aria-label': 'Password' },
       h(
         'div',
-        { class: 'stack-xs secret-card__body' },
+        { class: 'stack-xs flex-fill' },
         h('strong', null, 'Password'),
         h('span', { class: 'secret-value' }, info.password),
         h('span', { class: 'small muted' }, 'Send it through a different channel than the link. It is not stored anywhere.'),
@@ -153,7 +174,16 @@ export function showCreated(info: CreatedInfo): void {
         h(
           'dl',
           { class: 'details' },
-          detail('Expires', info.burn ? 'After first read' : info.expire === 'Never' ? 'Never' : `in ${info.expire}`),
+          detail(
+            'Expires',
+            info.burn
+              ? info.expire === 'Never'
+                ? 'After first read'
+                : `After first read, or in ${info.expire} if never opened`
+              : info.expire === 'Never'
+                ? 'Never'
+                : `in ${info.expire}`,
+          ),
           detail('Format', formatterLabel(info.formatter)),
           detail('Burn after reading', info.burn ? 'On' : 'Off'),
           detail('Discussion', info.discussion ? 'Open' : 'Closed'),
@@ -166,13 +196,13 @@ export function showCreated(info: CreatedInfo): void {
       { class: 'card card--pad row row--between', 'aria-label': 'Delete link' },
       h(
         'div',
-        { class: 'stack-xs truncate' },
+        { class: 'stack-xs flex-fill' },
         h('strong', null, 'Delete link'),
         h('span', { class: 'small muted' }, 'Anyone with this link can delete the paste. Keep it to yourself.'),
         h('span', { class: 'small muted mono truncate' }, info.deleteUrl),
       ),
       h('div', { class: 'row' }, copyDelete, deleteNow),
     ),
-  ]);
+  ], { title: 'Link ready' });
   copy.focus();
 }

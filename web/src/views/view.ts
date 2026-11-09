@@ -2,7 +2,7 @@
 import { ApiError, CommentRecord, PasteRecord, getPaste, postComment } from '../api';
 import { base58Decode } from '../base58';
 import { DecryptionError, base64ToBytes, decrypt, encryptComment } from '../crypto';
-import { clear, copyText, downloadBlob, h, toast } from '../dom';
+import { clear, copyText, downloadBlob, h, prefersReducedMotion, toast } from '../dom';
 import { expiresIn, formatBytes, formatterLabel, timeAgo } from '../format';
 import { icon } from '../icons';
 import { renderContent } from '../render';
@@ -60,7 +60,10 @@ export async function showPaste(id: string): Promise<void> {
     try {
       paste = await getPaste(id);
     } catch (err) {
-      return showError('notfound', err instanceof ApiError ? undefined : 'The server could not be reached.');
+      // Only an answer from the API itself means the paste is gone; anything else is a
+      // connection or proxy problem, and the paste may well still be there.
+      if (err instanceof ApiError && err.kind === 'server') return showError('notfound');
+      return showError('unreachable', { detail: err instanceof ApiError && err.kind === 'http' ? `${err.message} The paste was not opened; try again in a moment.` : undefined, retry: () => void load() });
     }
     // The server has now deleted a burn-after-reading paste. Drop the `-` from the
     // fragment so a reload reports it as gone instead of offering to open it again.
@@ -78,7 +81,7 @@ async function unlock(paste: PasteRecord, key: Uint8Array, password: string): Pr
     await renderPaste(paste, key, password, message);
   } catch (err) {
     if (!(err instanceof DecryptionError)) throw err;
-    showPasswordGate(password !== '', (pw) => void unlock(paste, key, pw));
+    showPasswordGate({ wrong: password !== '', burned: paste.adata[3] === 1 }, (pw) => void unlock(paste, key, pw));
   }
 }
 
@@ -158,7 +161,6 @@ async function renderPaste(paste: PasteRecord, key: Uint8Array, password: string
   const text = typeof message.paste === 'string' ? message.paste : '';
   const [, formatter, discussion, burn] = paste.adata;
   const attachments = attachmentsOf(message);
-  document.title = 'Paste';
 
   const action = (label: string, handler: () => void) => {
     const b = h('button', { type: 'button', class: 'btn btn--sm' }, label);
@@ -175,26 +177,35 @@ async function renderPaste(paste: PasteRecord, key: Uint8Array, password: string
           setTimeout(() => URL.revokeObjectURL(url), 60_000);
         }),
         action('Download', () => downloadBlob(textBlob(), `paste-${paste.id}.${extensionFor(formatter)}`)),
-        action('Clone', () => goHome({ text, formatter })),
+        action('Clone', () => {
+          const notes = [attachments.length ? 'The attachment was not copied.' : '', password ? 'Set a password again if you need one.' : ''].filter(Boolean);
+          goHome({ text, formatter, notice: notes.length ? `Cloned from the paste you were reading. ${notes.join(' ')}` : undefined });
+        }),
       ]
     : [];
 
-  const metaItems: (Node | string)[] = [h('span', { class: 'pill' }, icon('lock', 14, 2.2), 'Decrypted locally')];
-  const addMeta = (value: string) => {
-    if (!value) return;
-    metaItems.push(h('span', { class: 'meta__dot', 'aria-hidden': 'true' }, '•'), h('span', null, value));
+  // Separators are drawn in CSS so that none is left dangling where the line wraps.
+  const metaItems: HTMLElement[] = [
+    h('li', { class: 'meta__item', title: 'Decrypted in your browser. The server never sees the content.' }, h('span', { class: 'pill' }, icon('lock', 14, 2.2), 'Decrypted locally')),
+  ];
+  const addMeta = (value: string, title?: string) => {
+    if (value) metaItems.push(h('li', { class: 'meta__item', title }, value));
   };
   addMeta(paste.meta.created ? `Created ${timeAgo(paste.meta.created)}` : '');
-  addMeta(burn === 1 ? 'Burn after reading' : expiresIn(paste.meta.time_to_live));
+  if (burn === 1) addMeta('Burn after reading', 'Deleted from the server when it was opened.');
+  else {
+    const ttl = paste.meta.time_to_live;
+    addMeta(expiresIn(ttl), ttl ? 'After that it is deleted from the server and the link stops working.' : 'Stays until someone deletes it.');
+  }
   addMeta(formatterLabel(formatter));
-  metaItems.splice(1, 1); // no separator right after the pill
 
   const content = text ? h('section', { class: 'content', 'aria-label': 'Paste content' }, await renderContent(text, formatter)) : null;
   const discussionSlot = h('div');
 
   mountPage(
     [
-      h('div', { class: 'meta-bar' }, h('div', { class: 'meta' }, metaItems), h('div', { class: 'actions' }, actions)),
+      h('h1', { class: 'sr-only' }, 'Encrypted paste'),
+      h('div', { class: 'meta-bar' }, h('div', { class: 'meta' }, h('ul', { class: 'meta__list', 'aria-label': 'About this paste' }, metaItems)), h('div', { class: 'actions' }, actions)),
       burn === 1
         ? h(
             'div',
@@ -207,7 +218,7 @@ async function renderPaste(paste: PasteRecord, key: Uint8Array, password: string
       attachments.map(renderAttachment),
       discussion === 1 ? discussionSlot : null,
     ],
-    { title: 'view' },
+    { view: true, title: 'Paste' },
   );
 
   if (discussion === 1) await renderDiscussion(discussionSlot, paste, key, password);
@@ -254,7 +265,14 @@ async function decryptComments(paste: PasteRecord, key: Uint8Array, password: st
   return results.filter((c): c is DecryptedComment => c !== null).sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
 }
 
-async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint8Array, password: string, highlight?: string): Promise<void> {
+interface DiscussionState {
+  /** Comment to highlight and focus (the one just posted). */
+  highlight?: string;
+  /** Nickname typed before the form was rebuilt. */
+  nickname?: string;
+}
+
+async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint8Array, password: string, state: DiscussionState = {}): Promise<void> {
   const comments = await decryptComments(paste, key, password);
   const byParent = new Map<string, DecryptedComment[]>();
   const ids = new Set(comments.map((c) => c.id));
@@ -264,18 +282,29 @@ async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint
   }
 
   let replyTo: DecryptedComment | null = null;
+  const articles = new Map<string, HTMLElement>();
   const replying = h('div', { class: 'replying', hidden: true });
   const nickname = h('input', { id: 'nick', type: 'text', class: 'input', placeholder: 'Anonymous', maxlength: '64', autocomplete: 'nickname' });
-  const body = h('textarea', { id: 'comment', class: 'textarea', rows: '3', placeholder: 'Write a reply…' });
+  nickname.value = state.nickname ?? '';
+  const body = h('textarea', { id: 'comment', class: 'textarea', rows: '3', placeholder: 'Write a comment…' });
+  const bodyLabel = h('label', { for: 'comment', class: 'label' }, 'Comment');
   const formError = h('div', { class: 'callout callout--danger', role: 'alert', hidden: true });
   const post = h('button', { type: 'submit', class: 'btn btn--primary' }, 'Post comment');
 
   const setReply = (c: DecryptedComment | null) => {
+    if (replyTo) articles.get(replyTo.id)?.classList.remove('comment--replying');
     replyTo = c;
     replying.hidden = !c;
+    body.placeholder = c ? `Reply to ${c.nickname || 'Anonymous'}…` : 'Write a comment…';
+    bodyLabel.textContent = c ? 'Reply' : 'Comment';
     if (c) {
+      articles.get(c.id)?.classList.add('comment--replying');
       const cancel = h('button', { type: 'button', class: 'btn btn--ghost' }, 'Cancel');
-      cancel.addEventListener('click', () => setReply(null));
+      cancel.addEventListener('click', () => {
+        const target = articles.get(c.id)?.querySelector<HTMLElement>('.comment__reply');
+        setReply(null);
+        target?.focus();
+      });
       replying.replaceChildren(h('span', null, `Replying to ${c.nickname || 'Anonymous'}`), cancel);
       body.focus();
     }
@@ -284,12 +313,17 @@ async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint
   const renderThread = (parent: string): HTMLElement[] =>
     (byParent.get(parent) ?? []).map((c) => {
       const name = c.nickname || 'Anonymous';
-      const reply = h('button', { type: 'button', class: 'btn btn--ghost' }, 'Reply');
+      const reply = h('button', { type: 'button', class: 'btn btn--ghost comment__reply', 'aria-label': `Reply to ${name}` }, 'Reply');
       reply.addEventListener('click', () => setReply(c));
       const children = renderThread(c.id);
       const article = h(
         'article',
-        { class: `comment${c.id === highlight ? ' comment--highlight' : ''}`, id: `comment-${c.id}` },
+        {
+          class: `comment${c.id === state.highlight ? ' comment--highlight' : ''}`,
+          id: `comment-${c.id}`,
+          'aria-label': `Comment by ${name}`,
+          tabindex: c.id === state.highlight ? '-1' : null,
+        },
         h('span', { class: `avatar avatar--${avatarVariant(c.nickname)}`, 'aria-hidden': 'true' }, c.nickname ? [...c.nickname][0].toUpperCase() : '?'),
         h(
           'div',
@@ -299,6 +333,7 @@ async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint
           h('div', { class: 'row' }, reply),
         ),
       );
+      articles.set(c.id, article);
       return children.length ? h('div', null, article, h('div', { class: 'comment-children' }, children)) : article;
     });
 
@@ -308,10 +343,17 @@ async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint
     { class: 'card comment-form', novalidate: true },
     replying,
     h('div', { class: 'field comment-form__nick' }, h('label', { for: 'nick', class: 'label' }, 'Nickname ', h('span', { class: 'muted' }, '(optional)')), nickname),
-    h('div', { class: 'field' }, h('label', { for: 'comment', class: 'label' }, 'Comment'), body),
+    h('div', { class: 'field' }, bodyLabel, body),
     formError,
-    h('div', { class: 'row row--between' }, h('span', { class: 'small muted' }, 'Comments are encrypted with the same key.'), post),
+    h('div', { class: 'row comment-form__footer' }, post),
   );
+
+  body.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -326,8 +368,11 @@ async function renderDiscussion(slot: HTMLElement, paste: PasteRecord, key: Uint
       const { ct, adata } = await encryptComment(key, password, message, paste.id, parentid);
       const created = await postComment({ v: 2, adata, ct, pasteid: paste.id, parentid });
       const fresh = await getPaste(paste.id);
-      await renderDiscussion(slot, fresh, key, password, created.id);
-      document.getElementById(`comment-${created.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await renderDiscussion(slot, fresh, key, password, { highlight: created.id, nickname: nickname.value });
+      const posted = document.getElementById(`comment-${created.id}`);
+      posted?.focus({ preventScroll: true });
+      posted?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+      toast('Comment posted');
     } catch (err) {
       post.removeAttribute('aria-busy');
       formError.replaceChildren(icon('info', 20), h('p', null, err instanceof ApiError ? err.message : 'Could not post the comment.'));

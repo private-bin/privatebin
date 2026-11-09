@@ -3,8 +3,15 @@ import type { CommentAdata, PasteAdata } from './crypto';
 
 const HEADERS = { 'X-Requested-With': 'JSONHttpRequest', 'Content-Type': 'application/json' };
 
+/** `network`: no response at all. `http`: a response that is not the JSON API (proxy error page, 5xx).
+ *  `server`: the API answered with an error status (paste missing, wrong token, rate limit…). */
+export type ApiErrorKind = 'network' | 'http' | 'server';
+
 export class ApiError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly kind: ApiErrorKind = 'server',
+  ) {
     super(message);
     this.name = 'ApiError';
   }
@@ -46,13 +53,13 @@ async function call<T>(input: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(input, { ...init, headers: HEADERS, credentials: 'same-origin', cache: 'no-store' });
   } catch {
-    throw new ApiError('The server could not be reached. Check your connection and try again.');
+    throw new ApiError('The server could not be reached. Check your connection and try again.', 'network');
   }
   let body: { status?: number; message?: string } & Record<string, unknown>;
   try {
     body = await response.json();
   } catch {
-    throw new ApiError(`Unexpected server response (HTTP ${response.status}).`);
+    throw new ApiError(`Unexpected server response (HTTP ${response.status}).`, 'http');
   }
   if (body.status !== 0) throw new ApiError(body.message || 'Unknown server error.');
   return body as unknown as T;

@@ -1,17 +1,26 @@
 // Centered single-purpose screens: loading, password prompt, burn confirmation, errors.
-import { h } from '../dom';
+import { announce, h } from '../dom';
 import { icon } from '../icons';
 import { goHome } from './create';
 import { mountPage } from './layout';
 
 export function showLoading(message: string): void {
-  mountPage(h('div', { class: 'gate', 'aria-busy': 'true' }, h('div', { class: 'spinner', 'aria-hidden': 'true' }), h('p', { class: 'gate__text', role: 'status' }, message)), {
-    narrow: true,
+  mountPage(h('div', { class: 'gate', 'aria-busy': 'true' }, h('div', { class: 'spinner', 'aria-hidden': 'true' }), h('p', { class: 'gate__text' }, message)), {
     centered: true,
+    title: message.replace(/…$/, ''),
   });
+  announce(message);
 }
 
-export function showPasswordGate(wrong: boolean, onSubmit: (password: string) => void): void {
+export interface PasswordGateOptions {
+  /** The previous attempt failed. */
+  wrong: boolean;
+  /** Burn after reading: the server copy is already gone, only this tab holds the paste. */
+  burned: boolean;
+}
+
+export function showPasswordGate(options: PasswordGateOptions, onSubmit: (password: string) => void): void {
+  const { wrong, burned } = options;
   const input = h('input', {
     id: 'pw',
     type: 'password',
@@ -19,7 +28,7 @@ export function showPasswordGate(wrong: boolean, onSubmit: (password: string) =>
     autocomplete: 'off',
     required: true,
     'aria-invalid': wrong ? 'true' : 'false',
-    'aria-describedby': wrong ? 'pw-error' : null,
+    'aria-describedby': [wrong ? 'pw-error' : '', burned ? 'pw-burned' : ''].filter(Boolean).join(' ') || null,
   });
   const button = h('button', { type: 'submit', class: 'btn btn--primary btn--lg btn--block' }, 'Decrypt');
   const form = h(
@@ -32,6 +41,14 @@ export function showPasswordGate(wrong: boolean, onSubmit: (password: string) =>
       h('h1', { class: 'gate__title' }, 'This paste is password-protected'),
       h('p', { class: 'gate__text' }, 'Enter the password the sender gave you. It is checked on this device; it is never sent anywhere.'),
     ),
+    burned
+      ? h(
+          'div',
+          { id: 'pw-burned', class: 'callout callout--warn' },
+          icon('alert', 20),
+          h('p', null, h('strong', null, 'Already deleted from the server. '), 'Keep this tab open until you have read it: closing or reloading it loses the paste for good.'),
+        )
+      : null,
     h(
       'div',
       { class: 'field' },
@@ -50,8 +67,9 @@ export function showPasswordGate(wrong: boolean, onSubmit: (password: string) =>
     button.textContent = 'Decrypting…';
     onSubmit(input.value);
   });
-  mountPage(form, { narrow: true, centered: true });
+  mountPage(form, { centered: true, title: 'Password required' });
   input.focus();
+  if (wrong) announce('Wrong password, or the link is incomplete.');
 }
 
 export function showBurnGate(onOpen: () => void): void {
@@ -69,10 +87,11 @@ export function showBurnGate(onOpen: () => void): void {
         { class: 'stack-sm' },
         h('h1', { id: 'burn-title', class: 'gate__title' }, 'This paste can be read only once'),
         h('p', { class: 'gate__text' }, 'As soon as you open it, it is deleted from the server. Copy anything you need before you leave or reload the page.'),
+        h('p', { class: 'gate__text' }, 'If the sender set a password, have it ready before you open the paste.'),
       ),
       h('div', { class: 'row' }, open, later),
     ),
-    { narrow: true, centered: true },
+    { centered: true, title: 'Read once' },
   );
 }
 
@@ -95,11 +114,11 @@ export function showDeleteGate(onDelete: () => void): void {
       ),
       h('div', { class: 'row' }, remove, cancel),
     ),
-    { narrow: true, centered: true },
+    { centered: true, title: 'Delete paste' },
   );
 }
 
-export type ErrorKind = 'notfound' | 'nokey' | 'badkey' | 'deleted' | 'generic';
+export type ErrorKind = 'notfound' | 'nokey' | 'badkey' | 'badlink' | 'unreachable' | 'deleted' | 'generic';
 
 const ERRORS: Record<ErrorKind, { eyebrow: string; title: string; body: string; tone: 'danger' | 'warn' | 'accent' }> = {
   notfound: { eyebrow: 'Not found', title: 'This paste is gone', body: 'It does not exist, it has expired, or it was already read and burned.', tone: 'danger' },
@@ -110,15 +129,42 @@ const ERRORS: Record<ErrorKind, { eyebrow: string; title: string; body: string; 
     tone: 'danger',
   },
   badkey: { eyebrow: 'Decryption failed', title: 'Could not decrypt this paste', body: 'The key in the link is invalid or incomplete. Ask the sender for the full link, including everything after #.', tone: 'danger' },
+  badlink: {
+    eyebrow: 'Invalid link',
+    title: 'This link looks incomplete',
+    body: 'The paste ID in the link is missing or was changed along the way. Ask the sender for the full link.',
+    tone: 'danger',
+  },
+  unreachable: {
+    eyebrow: 'Connection problem',
+    title: 'Can’t reach the server',
+    body: 'The paste was not opened. Check your connection and try again.',
+    tone: 'warn',
+  },
   deleted: { eyebrow: 'Deleted', title: 'The paste was deleted', body: 'It has been removed from the server and its link no longer works.', tone: 'accent' },
   generic: { eyebrow: 'Error', title: 'Something went wrong', body: 'Please try again.', tone: 'danger' },
 };
 
-export function showError(kind: ErrorKind, detail?: string, title?: string): void {
+export interface ErrorOptions {
+  detail?: string;
+  title?: string;
+  /** Offers a "Try again" button instead of "Create a new paste". */
+  retry?: () => void;
+}
+
+export function showError(kind: ErrorKind, options: ErrorOptions = {}): void {
   const e = ERRORS[kind];
   const badge = e.tone === 'accent' ? 'badge-icon' : `badge-icon badge-icon--${e.tone}`;
-  const action = h('button', { type: 'button', class: 'btn btn--primary btn--lg btn--block' }, 'Create a new paste');
-  action.addEventListener('click', () => goHome());
+  const actions: HTMLButtonElement[] = [];
+  if (options.retry) {
+    const retry = h('button', { type: 'button', class: 'btn btn--primary btn--lg' }, 'Try again');
+    retry.addEventListener('click', options.retry);
+    actions.push(retry);
+  }
+  const create = h('button', { type: 'button', class: options.retry ? 'btn btn--lg' : 'btn btn--primary btn--lg btn--block' }, 'Create a new paste');
+  create.addEventListener('click', () => goHome());
+  actions.push(create);
+  const title = options.title ?? e.title;
   mountPage(
     h(
       'section',
@@ -128,11 +174,11 @@ export function showError(kind: ErrorKind, detail?: string, title?: string): voi
         'div',
         { class: 'stack-sm' },
         h('span', { class: 'gate__eyebrow' }, e.eyebrow),
-        h('h1', { id: 'err-title', class: 'gate__title' }, title ?? e.title),
-        h('p', { class: 'gate__text' }, detail ?? e.body),
+        h('h1', { id: 'err-title', class: 'gate__title' }, title),
+        h('p', { class: 'gate__text' }, options.detail ?? e.body),
       ),
-      action,
+      options.retry ? h('div', { class: 'row' }, actions) : actions,
     ),
-    { narrow: true, centered: true },
+    { centered: true, title },
   );
 }

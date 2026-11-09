@@ -35,14 +35,46 @@ export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
+/** Reads a message out to screen readers through one live region that exists from page load
+ *  (regions inserted together with their text are often not announced). */
+export function announce(message: string): void {
+  let region = document.getElementById('pb-live');
+  if (!region) {
+    region = h('div', { id: 'pb-live', class: 'sr-only', 'aria-live': 'polite', 'aria-atomic': 'true' });
+    document.body.appendChild(region);
+  }
+  // Clear first so the same message twice in a row is announced again.
+  region.textContent = '';
+  const target = region;
+  window.setTimeout(() => (target.textContent = message), 50);
+}
+
 let toastTimer: number | undefined;
 export function toast(message: string): void {
   document.querySelector('.toast')?.remove();
-  const el = h('div', { class: 'toast', role: 'status' }, message);
+  const el = h('div', { class: 'toast', 'aria-hidden': 'true' }, message);
   document.body.appendChild(el);
+  announce(message);
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => el.remove(), 2200);
 }
+
+/** Shows `done` on a button for a moment, announces it, then restores the original content. */
+const flashing = new WeakMap<HTMLElement, { original: Node[]; timer: number }>();
+export function flashButton(button: HTMLElement, done: (Node | string)[], message: string): void {
+  const previous = flashing.get(button);
+  if (previous) window.clearTimeout(previous.timer);
+  const original = previous?.original ?? [...button.childNodes];
+  button.replaceChildren(...done);
+  announce(message);
+  const timer = window.setTimeout(() => {
+    button.replaceChildren(...original);
+    flashing.delete(button);
+  }, 2000);
+  flashing.set(button, { original, timer });
+}
+
+export const prefersReducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export async function copyText(text: string): Promise<boolean> {
   try {

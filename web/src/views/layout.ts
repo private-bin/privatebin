@@ -7,36 +7,51 @@ import { goHome } from './create';
 
 const SOURCE_URL = 'https://github.com/private-bin/privatebin';
 
-function currentTheme(): 'light' | 'dark' {
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+type ThemeChoice = 'system' | 'light' | 'dark';
+const NEXT: Record<ThemeChoice, ThemeChoice> = { system: 'light', light: 'dark', dark: 'system' };
+const THEME_ICON = { system: 'monitor', light: 'sun', dark: 'moon' } as const;
+
+function savedTheme(): ThemeChoice {
+  try {
+    const value = localStorage.getItem('pb-theme');
+    return value === 'light' || value === 'dark' ? value : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function applyTheme(choice: ThemeChoice): void {
+  try {
+    if (choice === 'system') localStorage.removeItem('pb-theme');
+    else localStorage.setItem('pb-theme', choice);
+  } catch {
+    // storage unavailable: the choice just won't persist
+  }
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = choice === 'system' ? (systemDark ? 'dark' : 'light') : choice;
 }
 
 function paintThemeButton(button: HTMLElement): void {
-  const dark = currentTheme() === 'dark';
-  button.replaceChildren(icon(dark ? 'sun' : 'moon', 18, 1.8));
-  button.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  const choice = savedTheme();
+  const label = `Theme: ${choice === 'system' ? `system (${document.documentElement.dataset.theme ?? 'light'})` : choice}. Switch to ${NEXT[choice]}`;
+  button.replaceChildren(icon(THEME_ICON[choice], 18, 1.8));
+  button.setAttribute('aria-label', label);
+  button.title = label;
 }
 
 // theme.ts re-applies the theme when the system preference changes (its listener was
-// registered first, so it runs first); keep the toggle's icon and label in sync.
+// registered first, so it runs first); keep the toggle's label in sync.
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   document.querySelectorAll<HTMLElement>('[data-theme-toggle]').forEach(paintThemeButton);
 });
 
 function themeButton(): HTMLButtonElement {
   const button = h('button', { type: 'button', class: 'btn btn--icon', 'data-theme-toggle': '' });
-  const paint = () => paintThemeButton(button);
   button.addEventListener('click', () => {
-    const next = currentTheme() === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem('pb-theme', next);
-    } catch {
-      // ignore: preference just won't persist
-    }
-    paint();
+    applyTheme(NEXT[savedTheme()]);
+    paintThemeButton(button);
   });
-  paint();
+  paintThemeButton(button);
   return button;
 }
 
@@ -48,24 +63,26 @@ function onHome(event: Event): void {
 }
 
 export interface PageOptions {
-  /** Narrower chrome for centered gate screens. */
-  narrow?: boolean;
   /** Content is a centered card rather than a document flow. */
   centered?: boolean;
+  /** Tighter spacing for the paste viewer. */
+  view?: boolean;
+  /** Document title, shown as "<title> – <site name>". */
   title?: string;
 }
 
 export function mountPage(content: Child | (Child | Child[])[], options: PageOptions = {}): void {
   const app = document.getElementById('app')!;
-  const width = options.narrow ? 'container container--narrow' : 'container';
   const home = baseUrl();
+  document.title = options.title ? `${options.title} – ${config.name}` : config.name;
 
+  // Header and footer keep the same width on every screen; only the content narrows.
   const header = h(
     'header',
     { class: 'site-header' },
     h(
       'div',
-      { class: `${width} site-header__inner` },
+      { class: 'container site-header__inner' },
       h('a', { href: home, class: 'brand', onclick: onHome }, brandMark(), h('span', null, config.name)),
       h(
         'nav',
@@ -76,13 +93,14 @@ export function mountPage(content: Child | (Child | Child[])[], options: PageOpt
     ),
   );
 
+  const children = Array.isArray(content) ? content : [content];
   const main = options.centered
-    ? h('main', { class: 'center-stage' }, ...(Array.isArray(content) ? content : [content]))
-    : h('main', { class: `${width} page${options.title === 'view' ? ' page--view' : ''}` }, ...(Array.isArray(content) ? content : [content]));
+    ? h('main', { class: 'center-stage', tabindex: '-1' }, ...children)
+    : h('main', { class: `container page${options.view ? ' page--view' : ''}`, tabindex: '-1' }, ...children);
 
   const footer = h(
     'footer',
-    { class: `${width} site-footer` },
+    { class: 'container site-footer' },
     h('span', null, 'Zero-knowledge: the server only ever stores ciphertext.'),
     h(
       'span',
@@ -95,4 +113,9 @@ export function mountPage(content: Child | (Child | Child[])[], options: PageOpt
   clear(app);
   app.append(header, main, footer);
   window.scrollTo(0, 0);
+  // Move focus into the new screen so keyboard and screen-reader users start there.
+  // Views that focus a control themselves (an input, a button) do so after this.
+  const heading = main.querySelector<HTMLElement>('h1');
+  if (heading) heading.tabIndex = -1;
+  (heading ?? main).focus({ preventScroll: true });
 }
